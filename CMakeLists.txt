@@ -183,6 +183,7 @@ set(STA_SOURCE
   search/ClkNetwork.cc
   search/ClkSkew.cc
   search/Crpr.cc
+  search/DesignVariation.cc
   search/FindRegister.cc
   search/GatedClk.cc
   search/Genclks.cc
@@ -269,6 +270,7 @@ set(STA_TCL_FILES
   sdc/Variables.tcl
   sdf/Sdf.tcl
   search/Search.tcl
+  search/DesignVariation.tcl
   spice/WriteSpice.tcl
   verilog/Verilog.tcl
   )

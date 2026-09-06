@@ -4,6 +4,20 @@ OpenSTA Timing Analyzer Release Notes
 This file summarizes user visible changes for each release.
 See ApiChangeLog.txt for changes to the STA api.
 
+2026/09/05
+----------
+
+The report_design_variation command performs design-level Monte Carlo
+timing-yield analysis on a path collection returned by find_timing_paths.
+It reuses POCV/LVF delay variation, shares random variables for common
+timing arcs, and reports endpoint/design minimum slack, timing yield, and
+yield bottleneck correlations.
+
+  report_design_variation path_ends [-samples count]
+                              [-sigma_limit limit]
+                              [-seed seed]
+                              [-bottlenecks count]
+
 2026/08/02
 ----------
 
