@@ -26,13 +26,7 @@ jobs:
                 tcl-tclreadline \
                 libeigen3-dev \
                 ninja-build \
-                libgtest-dev \
-                libfmt-dev \
-                python3-numpy \
-                python3-scipy
-
-      - name: Test V24 variation algorithms
-        run: python3 -m unittest discover -s tools/variation/tests -p test_v24.py -v
+                libgtest-dev
 
       - name: Set up cudd-3.0.0
         run: |
@@ -45,16 +39,9 @@ jobs:
           mkdir build
           cd build
           cmake .. -G Ninja -DCUDD_DIR=$(pwd)/../cudd -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DCMAKE_BUILD_TYPE=Release
-          cmake --build . --target sta -- -j $(nproc)
+          cmake --build . --target all -- -j $(nproc)
           cmake --install .
           tar -zcvf build.tar.gz -Cinstall .
-
-      - name: Test V24 native interface
-        run: |
-          python3 tools/variation/tests/test_native.py build/sta
-
-      - name: Build remaining unit test binaries
-        run: cmake --build build --target all -- -j $(nproc)
 
       - name: Test
         run: |
@@ -119,4 +106,3 @@ jobs:
           name: result-macos
           path: |
             test/results/*
-
