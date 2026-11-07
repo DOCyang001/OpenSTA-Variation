@@ -5,6 +5,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <iomanip>
+#include <locale>
+#include <sstream>
 #include <limits>
 #include <random>
 #include <string>
@@ -23,6 +27,11 @@
 #include "TimingArc.hh"
 #include "TimingRole.hh"
 #include "Units.hh"
+#include "Liberty.hh"
+#include "Search.hh"
+#include "Variables.hh"
+#include "PocvMode.hh"
+#include "Crpr.hh"
 
 namespace sta {
 
@@ -296,3 +305,173 @@ reportDesignVariation(PathEndSeq *path_ends,
 }
 
 } // namespace sta
+
+// V24 integration added by DOCyang001/OpenSTA-private.
+// Serialize OpenSTA graph moments into the two standalone algorithms' schema.
+// The compatibility text is an interchange file, not a PrimeTime report.
+namespace sta {
+namespace {
+struct VariationRow {
+  std::string point;
+  std::string cell;
+  char transition;
+  double mean;
+  double sigma;
+  double corner;
+};
+
+std::vector<VariationRow>
+variationRows(const Path *path, const StaState *sta)
+{
+  std::vector<VariationRow> rows;
+  if (!path)
+    return rows;
+  PathExpanded expanded(path, true, sta);
+  for (size_t i = 0; i < expanded.size(); ++i) {
+    const Path *current = expanded.path(i);
+    const Pin *pin = current->pin(sta);
+    const Network *network = sta->network();
+    const Instance *instance = network->instance(pin);
+    const LibertyCell *cell = network->libertyCell(instance);
+    if (!cell)
+      continue; // Ports have no cell arc; their fixed offsets are in the budget.
+    const std::string point = network->pathName(pin);
+    if (point.find_first_of(" \t\r\n()") != std::string::npos
+        || cell->name().find_first_of(" \t\r\n()") != std::string::npos)
+      sta->report()->error(1620, "V24 interchange cannot encode whitespace or parentheses in pin/cell names.");
+    double mean = 0.0;
+    double sigma = 0.0;
+    double corner = 0.0;
+    if (i > 0) {
+      const Path *previous = expanded.path(i - 1);
+      mean = current->arrival().mean() - previous->arrival().mean();
+      TimingArc *arc = current->prevArc(sta);
+      Edge *edge = current->prevEdge(sta);
+      if (arc && edge) {
+        // Do not subtract statistical arrivals: their variances are correlated.
+        const Delay delay = sta->search()->deratedDelay(
+            previous->vertex(sta), arc, edge, current->isClock(sta),
+            current->minMax(sta), current->dcalcAnalysisPtIndex(sta),
+            current->sdc(sta));
+        if (delay.meanShift() != 0.0F || delay.skewness() != 0.0F)
+          sta->report()->error(1621, "V24 requires symmetric normal arc moments.");
+        if (network->instance(previous->pin(sta)) == instance) {
+          sigma = delay.stdDev();
+          corner = mean + delayAsFloat(delay, current->minMax(sta), sta) - delay.mean();
+        }
+        else if (delay.stdDev() != 0.0F)
+          sta->report()->error(1622, "V24 models fixed net delays; statistical net delay is unsupported.");
+      }
+    }
+    if (!std::isfinite(mean) || !std::isfinite(sigma) || !std::isfinite(corner))
+      sta->report()->error(1623, "Non-finite timing moment in V24 export.");
+    if (sigma < 0.0)
+      sta->report()->error(1624, "Negative arc standard deviation in V24 export.");
+    // For a fixed delay, Corner equals Mean.
+    if (sigma == 0.0)
+      corner = mean;
+    rows.push_back({point, cell->name(),
+                    current->transition() == RiseFall::rise() ? 'r' : 'f',
+                    mean, sigma, corner});
+  }
+  return rows;
+}
+
+double variationRowSum(const std::vector<VariationRow> &rows,
+                       const std::string &through = "")
+{
+  double sum = 0.0;
+  for (const auto &row : rows) {
+    sum += row.mean;
+    if (!through.empty() && row.point == through)
+      break;
+  }
+  return sum;
+}
+
+void variationWriteRows(std::ostream &out,
+                        const std::vector<VariationRow> &rows,
+                        double scale)
+{
+  for (const auto &row : rows)
+    out << "  " << row.point << " (" << row.cell << ") 0 0 "
+        << row.mean / scale << ' ' << row.sigma / scale << ' '
+        << row.corner / scale << ' ' << row.corner / scale
+        << " 0 " << row.transition << '\n';
+}
+} // namespace
+
+void writeDesignVariationTiming(PathEndSeq *path_ends,
+                                const char *filename)
+{
+  Sta *sta = Sta::sta();
+  if (!path_ends || path_ends->empty())
+    sta->report()->error(1625, "No paths supplied for variation analysis.");
+  if (!sta->variables()->pocvEnabled()
+      || sta->variables()->pocvMode() != PocvMode::normal)
+    sta->report()->error(1626, "V24 requires enabled normal POCV with characterized arc sigma.");
+  const double scale = sta->units()->timeUnit()->scale();
+  std::ostringstream out;
+  out.imbue(std::locale::classic());
+  out << std::scientific << std::setprecision(17);
+  out << "# OpenSTA V24 interchange; time values use the current OpenSTA time unit.\n"
+      << "# Fixed constraint/edge/CRPR offsets are aggregated in clock uncertainty.\n"
+      << "# Setup-check sigma is fixed, matching the standalone V24 model.\n";
+  for (PathEnd *end : *path_ends) {
+    if (!end || end->isUnconstrained() || !end->path()
+        || end->checkGenericRole(sta) != TimingRole::setup()
+        || end->isLatchCheck())
+      sta->report()->error(1627, "V24 supports constrained flip-flop setup paths only; hold/latch paths are unsupported.");
+    const Path *path = end->path();
+    const Path *capture = end->targetClkPath();
+    PathExpanded expanded(path, true, sta);
+    const Path *start = expanded.startPath();
+    const Instance *launch = sta->network()->instance(start->pin(sta));
+    const LibertyCell *launch_cell = sta->network()->libertyCell(launch);
+    if (!launch_cell || !launch_cell->isSequential())
+      sta->report()->error(1628, "V24 native export currently requires register-to-register setup paths.");
+    const auto data_rows = variationRows(path, sta);
+    const auto capture_rows = variationRows(capture, sta);
+    std::string common;
+    Crpr correction;
+    Pin *common_pin = nullptr;
+    if (capture)
+      sta->search()->checkCrpr()->checkCrpr(path, capture, correction, common_pin);
+    if (common_pin) {
+      const std::string name = sta->network()->pathName(common_pin);
+      const auto has = [&name](const auto &rows) {
+        return std::any_of(rows.begin(), rows.end(),
+                           [&name](const auto &row) { return row.point == name; });
+      };
+      if (has(data_rows) && has(capture_rows))
+        common = name;
+    }
+    const double slack = end->slack(sta).mean();
+    if (!std::isfinite(slack))
+      sta->report()->error(1629, "Non-finite nominal setup slack.");
+    double fixed = slack + variationRowSum(data_rows) - variationRowSum(capture_rows);
+    if (!common.empty())
+      fixed -= variationRowSum(data_rows, common) - variationRowSum(capture_rows, common);
+    out << "\n  Startpoint: " << sta->network()->pathName(launch)
+        << " (flip-flop)\n  Endpoint: " << pinName(path->pin(sta), sta)
+        << " (flip-flop)\n  Path Group: OpenSTA\n  Path Type: max\n";
+    if (!common.empty())
+      out << "  Last common pin: " << common << '\n';
+    out << "  Point Fanout Cap Mean Sensit Corner Value Path\n";
+    variationWriteRows(out, data_rows, scale);
+    out << "  data arrival time " << path->arrival().mean() / scale << '\n';
+    variationWriteRows(out, capture_rows, scale);
+    out << "  clock uncertainty " << fixed / scale << '\n'
+        << "  data required time " << (path->arrival().mean() + slack) / scale << '\n';
+  }
+  // Validate the whole collection before creating/truncating the destination.
+  std::ofstream file(filename);
+  if (!file)
+    sta->report()->error(1630, "Cannot open V24 interchange file.");
+  file << out.str();
+  file.close();
+  if (!file)
+    sta->report()->error(1631, "Failed writing V24 interchange file.");
+}
+} // namespace sta
+

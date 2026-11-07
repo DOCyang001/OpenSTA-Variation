@@ -14,4 +14,8 @@ reportDesignVariation(PathEndSeq *path_ends,
                        unsigned seed,
                        int bottleneck_count);
 
+// Export native normal-POCV setup paths for the V24 analysis backend.
+void writeDesignVariationTiming(PathEndSeq *path_ends, const char *filename);
+
 } // namespace sta
+

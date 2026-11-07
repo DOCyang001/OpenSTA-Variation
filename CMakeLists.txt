@@ -658,6 +658,22 @@ message(STATUS "STA executable: ${CMAKE_BINARY_DIR}/sta")
 # executable
 install(TARGETS sta DESTINATION bin)
 
+# V24 statistical analysis backend: build-tree and installed CLI both work.
+set(STA_VARIATION_FILES
+  opensta_variation.py
+  generic_design_variation_pin_arc_ps_standalone_V24.py
+  variation_bottleneck_v24.py
+  requirements.txt)
+foreach(variation_file IN LISTS STA_VARIATION_FILES)
+  configure_file(
+    ${STA_HOME}/tools/variation/${variation_file}
+    ${CMAKE_CURRENT_BINARY_DIR}/share/OpenSTA/variation/${variation_file}
+    COPYONLY)
+  install(FILES ${STA_HOME}/tools/variation/${variation_file}
+          DESTINATION share/OpenSTA/variation)
+endforeach()
+
+
 # library
 install(TARGETS OpenSTA DESTINATION lib)
 
@@ -731,3 +747,4 @@ if(BUILD_TESTS)
   add_subdirectory(verilog/test)
   add_subdirectory(spice/test)
 endif()
+
