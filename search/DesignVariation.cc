@@ -420,6 +420,7 @@ void writeDesignVariationTiming(PathEndSeq *path_ends,
   for (PathEnd *end : *path_ends) {
     if (!end || end->isUnconstrained() || !end->path()
         || end->checkGenericRole(sta) != TimingRole::setup()
+        || !end->isCheck()
         || end->isLatchCheck())
       sta->report()->error(1627, "V24 supports constrained flip-flop setup paths only; hold/latch paths are unsupported.");
     const Path *path = end->path();
@@ -428,7 +429,12 @@ void writeDesignVariationTiming(PathEndSeq *path_ends,
     const Path *start = expanded.startPath();
     const Instance *launch = sta->network()->instance(start->pin(sta));
     const LibertyCell *launch_cell = sta->network()->libertyCell(launch);
-    if (!launch_cell || !launch_cell->isSequential())
+    const LibertyCell *capture_cell = sta->network()->libertyCell(
+        sta->network()->instance(path->pin(sta)));
+    const TimingArc *launch_arc = expanded.startPrevArc();
+    if (!launch_cell || !launch_cell->isSequential()
+        || !capture_cell || !capture_cell->isSequential()
+        || !launch_arc || launch_arc->role() != TimingRole::regClkToQ())
       sta->report()->error(1628, "V24 native export currently requires register-to-register setup paths.");
     const auto data_rows = variationRows(path, sta);
     const auto capture_rows = variationRows(capture, sta);

@@ -45,13 +45,16 @@ jobs:
           mkdir build
           cd build
           cmake .. -G Ninja -DCUDD_DIR=$(pwd)/../cudd -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DCMAKE_BUILD_TYPE=Release
-          cmake --build . --target all -- -j $(nproc)
+          cmake --build . --target sta -- -j $(nproc)
           cmake --install .
           tar -zcvf build.tar.gz -Cinstall .
 
       - name: Test V24 native interface
         run: |
           python3 tools/variation/tests/test_native.py build/sta
+
+      - name: Build remaining unit test binaries
+        run: cmake --build build --target all -- -j $(nproc)
 
       - name: Test
         run: |
