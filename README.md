@@ -1,5 +1,7 @@
 # Parallax Static Timing Analyzer
 
+This project is based on [OpenSTA](https://github.com/parallaxsw/OpenSTA) and extends it with design variation and timing bottleneck analysis.
+
 OpenSTA is a gate level static timing verifier. As a stand-alone
 executable it can be used to verify the timing of a design using
 standard file formats.
