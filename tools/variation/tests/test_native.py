@@ -55,7 +55,9 @@ def quote(path):
     return "{" + str(path).replace("\\", "/") + "}"
 
 
-with tempfile.TemporaryDirectory(prefix="opensta v24 native ") as tmp:
+# The existing sta startup include_file path is not list-quoted. Keep the
+# startup script path simple; command output paths below still contain spaces.
+with tempfile.TemporaryDirectory(prefix="opensta_v24_native_") as tmp:
     root = Path(tmp)
     (root / "test.lib").write_text(LIB)
     (root / "test.v").write_text(NET)
