@@ -31,6 +31,9 @@ jobs:
                 python3-numpy \
                 python3-scipy
 
+      - name: Test V24 variation algorithms
+        run: python3 -m unittest discover -s tools/variation/tests -p test_v24.py -v
+
       - name: Set up cudd-3.0.0
         run: |
           wget https://github.com/oscc-ip/artifact/releases/download/cudd-3.0.0/build.tar.gz
@@ -46,9 +49,8 @@ jobs:
           cmake --install .
           tar -zcvf build.tar.gz -Cinstall .
 
-      - name: Test V24 variation algorithms and native interface
+      - name: Test V24 native interface
         run: |
-          python3 -m unittest discover -s tools/variation/tests -p test_v24.py -v
           python3 tools/variation/tests/test_native.py build/sta
 
       - name: Test

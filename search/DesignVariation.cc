@@ -371,7 +371,7 @@ variationRows(const Path *path, const StaState *sta)
     if (sigma == 0.0)
       corner = mean;
     rows.push_back({point, cell->name(),
-                    current->transition() == RiseFall::rise() ? 'r' : 'f',
+                    current->transition(sta) == RiseFall::rise() ? 'r' : 'f',
                     mean, sigma, corner});
   }
   return rows;
