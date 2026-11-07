@@ -14,3 +14,11 @@ report_design_variation_cmd(PathEndSeq *path_ends,
                              bottleneck_count);
 }
 %}
+
+%inline %{
+void write_design_variation_timing_cmd(PathEndSeq *path_ends, const char *filename)
+{
+  sta::writeDesignVariationTiming(path_ends, filename);
+}
+%}
+

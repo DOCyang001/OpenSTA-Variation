@@ -1,0 +1,45 @@
+name: V24 native variation
+
+on:
+  push:
+    paths:
+      - 'search/DesignVariation.*'
+      - 'tools/variation/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/variation-v24.yml'
+  pull_request:
+    paths:
+      - 'search/DesignVariation.*'
+      - 'tools/variation/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/variation-v24.yml'
+
+concurrency:
+  group: variation-v24-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flex libfl-dev bison tcl-dev libeigen3-dev libfmt-dev ninja-build swig python3-numpy python3-scipy
+          wget -q https://github.com/oscc-ip/artifact/releases/download/cudd-3.0.0/build.tar.gz
+          mkdir cudd
+          tar -zxf build.tar.gz -C cudd
+      - name: Analytic V24 tests
+        run: python3 -m unittest discover -s tools/variation/tests -p test_v24.py -v
+      - name: Build native command interface
+        run: |
+          cmake -S . -B build-variation -G Ninja -DBUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Debug -DUSE_TCL_READLINE=OFF -DCUDD_DIR=$PWD/cudd -DCMAKE_INSTALL_PREFIX=$PWD/build-variation/install
+          cmake --build build-variation --target sta --parallel 4
+      - name: Native POCV and CRPR tests
+        run: python3 tools/variation/tests/test_native.py build-variation/sta
+      - name: Installed backend discovery
+        run: |
+          cmake --install build-variation
+          python3 tools/variation/tests/test_native.py build-variation/install/bin/sta
