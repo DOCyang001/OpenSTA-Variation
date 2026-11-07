@@ -67,9 +67,11 @@ set sta_pocv_mode normal
 set sta_pocv_quantile 6.0
 create_clock -name clk -period 1.0 [get_ports clk]
 set_propagated_clock [get_clocks clk]
+set_timing_derate -early 0.95
+set_timing_derate -late 1.05
 set paths [find_timing_paths -from [get_pins r1/CK] -to [get_pins {{r2/D r3/D}}] -path_delay max -group_path_count 10 -endpoint_count 2]
 if {{[llength $paths] == 0}} {{ error "No native test paths" }}
-report_design_variation $paths -samples 2000 -tail_samples 2000 -sigma_limit 3 -seed 7 -bottlenecks 2 -python {quote(sys.executable)} -script_dir {quote(SCRIPTS)} -output_dir {quote(root / 'design run')}
+report_design_variation $paths -samples 2000 -tail_samples 2000 -sigma_limit 3 -seed 7 -bottlenecks 2 -python {quote(sys.executable)} -output_dir {quote(root / 'design run')}
 report_variation_bottleneck $paths -clock_paths exclude -exclude_VT ULVT -sigma_threshold 0.0 -max_violators 2 -python {quote(sys.executable)} -script_dir {quote(SCRIPTS)} -output_dir {quote(root / 'bottleneck run')}
 if {{![catch {{report_design_variation $paths -samples 1}}]}} {{ error "sample validation missing" }}
 if {{![catch {{report_design_variation $paths -sigma_limit Inf}}]}} {{ error "sigma validation missing" }}

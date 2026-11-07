@@ -37,7 +37,7 @@ def block(mean=0.2, sigma=0.05, capture_sigma=0.0, common=False):
             + f"  r1/Q (FF_SVT) 0 0 0.1 {sigma} {0.1+6*sigma} {0.1+6*sigma} 0 r\n"
             + "  r2/D (FF_SVT) 0 0 0 0 0 0 0 r\n"
             + f"  data arrival time {0.11 if common else 0.1}\n"
-            + clock
+            + clock.replace("0.02 0.13", "0.03 0.13")
             + "  cap/A (BUF_ULVT) 0 0 0 0 0 0 0 r\n"
             + f"  cap/Y (BUF_ULVT) 0 0 0 {capture_sigma} {6*capture_sigma} {6*capture_sigma} 0 r\n"
             + "  r2/CK (FF_SVT) 0 0 0 0 0 0 0 r\n"
