@@ -338,7 +338,7 @@ variationRows(const Path *path, const StaState *sta)
     const std::string point = network->pathName(pin);
     if (point.find_first_of(" \t\r\n()") != std::string::npos
         || cell->name().find_first_of(" \t\r\n()") != std::string::npos)
-      sta->report()->error(1620, "V24 interchange cannot encode whitespace or parentheses in pin/cell names.");
+      sta->report()->error(8200, "V24 interchange cannot encode whitespace or parentheses in pin/cell names.");
     double mean = 0.0;
     double sigma = 0.0;
     double corner = 0.0;
@@ -354,19 +354,19 @@ variationRows(const Path *path, const StaState *sta)
             current->minMax(sta), current->dcalcAnalysisPtIndex(sta),
             current->sdc(sta));
         if (delay.meanShift() != 0.0F || delay.skewness() != 0.0F)
-          sta->report()->error(1621, "V24 requires symmetric normal arc moments.");
+          sta->report()->error(8201, "V24 requires symmetric normal arc moments.");
         if (network->instance(previous->pin(sta)) == instance) {
           sigma = delay.stdDev();
           corner = mean + delayAsFloat(delay, current->minMax(sta), sta) - delay.mean();
         }
         else if (delay.stdDev() != 0.0F)
-          sta->report()->error(1622, "V24 models fixed net delays; statistical net delay is unsupported.");
+          sta->report()->error(8202, "V24 models fixed net delays; statistical net delay is unsupported.");
       }
     }
     if (!std::isfinite(mean) || !std::isfinite(sigma) || !std::isfinite(corner))
-      sta->report()->error(1623, "Non-finite timing moment in V24 export.");
+      sta->report()->error(8203, "Non-finite timing moment in V24 export.");
     if (sigma < 0.0)
-      sta->report()->error(1624, "Negative arc standard deviation in V24 export.");
+      sta->report()->error(8204, "Negative arc standard deviation in V24 export.");
     // For a fixed delay, Corner equals Mean.
     if (sigma == 0.0)
       corner = mean;
@@ -406,10 +406,10 @@ void writeDesignVariationTiming(PathEndSeq *path_ends,
 {
   Sta *sta = Sta::sta();
   if (!path_ends || path_ends->empty())
-    sta->report()->error(1625, "No paths supplied for variation analysis.");
+    sta->report()->error(8205, "No paths supplied for variation analysis.");
   if (!sta->variables()->pocvEnabled()
       || sta->variables()->pocvMode() != PocvMode::normal)
-    sta->report()->error(1626, "V24 requires enabled normal POCV with characterized arc sigma.");
+    sta->report()->error(8206, "V24 requires enabled normal POCV with characterized arc sigma.");
   const double scale = sta->units()->timeUnit()->scale();
   std::ostringstream out;
   out.imbue(std::locale::classic());
@@ -422,7 +422,7 @@ void writeDesignVariationTiming(PathEndSeq *path_ends,
         || end->checkGenericRole(sta) != TimingRole::setup()
         || !end->isCheck()
         || end->isLatchCheck())
-      sta->report()->error(1627, "V24 supports constrained flip-flop setup paths only; hold/latch paths are unsupported.");
+      sta->report()->error(8207, "V24 supports constrained flip-flop setup paths only; hold/latch paths are unsupported.");
     const Path *path = end->path();
     const Path *capture = end->targetClkPath();
     PathExpanded expanded(path, true, sta);
@@ -435,7 +435,7 @@ void writeDesignVariationTiming(PathEndSeq *path_ends,
     if (!launch_cell || !launch_cell->isSequential()
         || !capture_cell || !capture_cell->isSequential()
         || !launch_arc || launch_arc->role() != TimingRole::regClkToQ())
-      sta->report()->error(1628, "V24 native export currently requires register-to-register setup paths.");
+      sta->report()->error(8208, "V24 native export currently requires register-to-register setup paths.");
     const auto data_rows = variationRows(path, sta);
     const auto capture_rows = variationRows(capture, sta);
     std::string common;
@@ -454,7 +454,7 @@ void writeDesignVariationTiming(PathEndSeq *path_ends,
     }
     const double slack = end->slack(sta).mean();
     if (!std::isfinite(slack))
-      sta->report()->error(1629, "Non-finite nominal setup slack.");
+      sta->report()->error(8209, "Non-finite nominal setup slack.");
     double fixed = slack + variationRowSum(data_rows) - variationRowSum(capture_rows);
     if (!common.empty())
       fixed -= variationRowSum(data_rows, common) - variationRowSum(capture_rows, common);
@@ -473,11 +473,11 @@ void writeDesignVariationTiming(PathEndSeq *path_ends,
   // Validate the whole collection before creating/truncating the destination.
   std::ofstream file(filename);
   if (!file)
-    sta->report()->error(1630, "Cannot open V24 interchange file.");
+    sta->report()->error(8210, "Cannot open V24 interchange file.");
   file << out.str();
   file.close();
   if (!file)
-    sta->report()->error(1631, "Failed writing V24 interchange file.");
+    sta->report()->error(8211, "Failed writing V24 interchange file.");
 }
 } // namespace sta
 

@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 import runpy
+import re
 import subprocess
 import sys
 import tempfile
@@ -12,41 +13,19 @@ STA = Path(sys.argv[1]).resolve()
 SOURCE = Path(__file__).resolve().parents[3]
 SCRIPTS = SOURCE / "tools/variation"
 
-# Synthetic validation library; not foundry characterization.
-TABLE = '(scalar) { values ("0.1"); }'
-SIGMA = '(scalar) { values ("0.01"); }'
-SLEW = '(scalar) { values ("0.02"); }'
-def timing(related, kind, sense="positive_unate"):
-    return (f'timing () {{ related_pin : "{related}"; timing_type : {kind}; '
-            f'timing_sense : {sense}; cell_rise {TABLE} cell_fall {TABLE} '
-            f'rise_transition {SLEW} fall_transition {SLEW} '
-            f'ocv_std_dev_cell_rise {SIGMA} ocv_std_dev_cell_fall {SIGMA} }}')
-
-LIB = ('library (v24_test) { delay_model : table_lookup; time_unit : "1ns"; '
-       'voltage_unit : "1V"; current_unit : "1mA"; pulling_resistance_unit : "1kohm"; '
-       'capacitive_load_unit (1,pf); nom_voltage : 1; nom_temperature : 25; nom_process : 1; '
-       'cell (BUF_SVT) { area : 1; pin (A) { direction : input; capacitance : 0.001; } '
-       'pin (Y) { direction : output; function : "A"; ' + timing("A", "combinational") + '} } '
-       'cell (FF_SVT) { area : 2; ff (IQ,IQN) { next_state : "D"; clocked_on : "CK"; } '
-       'pin (D) { direction : input; capacitance : 0.001; '
-       'timing () { related_pin : "CK"; timing_type : setup_rising; '
-       'rise_constraint (scalar) { values ("0.03"); } fall_constraint (scalar) { values ("0.03"); } } '
-       'timing () { related_pin : "CK"; timing_type : hold_rising; '
-       'rise_constraint (scalar) { values ("0.01"); } fall_constraint (scalar) { values ("0.01"); } } } '
-       'pin (CK) { direction : input; clock : true; capacitance : 0.001; } '
-       'pin (Q) { direction : output; function : "IQ"; '
-       + timing("CK", "rising_edge", "non_unate") + '} } }')
-NET = """module v24_test(input clk, input d, output q2, output q3);
+NET = """module v24_test(clk, d, q2, q3);
+input clk, d;
+output q2, q3;
 wire c, c1, c2, c3, q1, n2, n3;
-BUF_SVT common_clk(.A(clk),.Y(c));
-BUF_SVT launch_clk(.A(c),.Y(c1));
-BUF_SVT capture2_clk(.A(c),.Y(c2));
-BUF_SVT capture3_clk(.A(c),.Y(c3));
-FF_SVT r1(.D(d),.CK(c1),.Q(q1));
-BUF_SVT data2(.A(q1),.Y(n2));
-BUF_SVT data3(.A(q1),.Y(n3));
-FF_SVT r2(.D(n2),.CK(c2),.Q(q2));
-FF_SVT r3(.D(n3),.CK(c3),.Q(q3));
+BUF_X1 common_clk(.A(clk),.Z(c));
+BUF_X1 launch_clk(.A(c),.Z(c1));
+BUF_X1 capture2_clk(.A(c),.Z(c2));
+BUF_X1 capture3_clk(.A(c),.Z(c3));
+DFF_X1 r1(.D(d),.CK(c1),.Q(q1));
+BUF_X1 data2(.A(q1),.Z(n2));
+BUF_X1 data3(.A(q1),.Z(n3));
+DFF_X1 r2(.D(n2),.CK(c2),.Q(q2));
+DFF_X1 r3(.D(n3),.CK(c3),.Q(q3));
 endmodule
 """
 
@@ -59,7 +38,13 @@ def quote(path):
 # startup script path simple; command output paths below still contain spaces.
 with tempfile.TemporaryDirectory(prefix="opensta_v24_native_") as tmp:
     root = Path(tmp)
-    (root / "test.lib").write_text(LIB)
+    # Keep the regression-tested Nangate cell/sequential definitions and add
+    # synthetic constant sigma tables. These are not foundry LVF measurements.
+    reference = (SOURCE / "test/nangate45/Nangate45_typ.lib").read_text()
+    sigma = '\n ocv_sigma_cell_rise (scalar) { values ("0.01"); }\n ocv_sigma_cell_fall (scalar) { values ("0.01"); }\n'
+    library, count = re.subn(r'timing\s*\([^)]*\)\s*\{', lambda m: m[0] + sigma, reference)
+    assert count > 0, "No timing groups in native test reference library"
+    (root / "test.lib").write_text(library)
     (root / "test.v").write_text(NET)
     tcl = f"""
 read_liberty {quote(root / 'test.lib')}
@@ -71,8 +56,8 @@ create_clock -name clk -period 1.0 [get_ports clk]
 set_propagated_clock [get_clocks clk]
 set_timing_derate -early 0.95
 set_timing_derate -late 1.05
-set paths [find_timing_paths -from [get_pins r1/CK] -to [get_pins {{r2/D r3/D}}] -path_delay max -group_path_count 10 -endpoint_count 2]
-if {{[llength $paths] == 0}} {{ error "No native test paths" }}
+set paths [find_timing_paths -to [get_pins {{r2/D r3/D}}] -path_delay max -group_path_count 10 -endpoint_path_count 2]
+if {{[llength $paths] == 0}} {{ report_checks -path_delay max -format full_clock_expanded; error "No native test paths" }}
 report_design_variation $paths -samples 2000 -tail_samples 2000 -sigma_limit 3 -seed 7 -bottlenecks 2 -python {quote(sys.executable)} -output_dir {quote(root / 'design run')}
 report_variation_bottleneck $paths -clock_paths exclude -exclude_VT ULVT -sigma_threshold 0.0 -max_violators 2 -python {quote(sys.executable)} -script_dir {quote(SCRIPTS)} -output_dir {quote(root / 'bottleneck run')}
 if {{![catch {{report_design_variation $paths -samples 1}}]}} {{ error "sample validation missing" }}
@@ -80,7 +65,7 @@ if {{![catch {{report_design_variation $paths -sigma_limit Inf}}]}} {{ error "si
 if {{![catch {{report_variation_bottleneck $paths -clock_paths invalid}}]}} {{ error "clock validation missing" }}
 if {{![catch {{report_variation_bottleneck $paths -sigma_threshold Inf}}]}} {{ error "threshold validation missing" }}
 if {{![catch {{report_variation_bottleneck $paths -python {quote(sys.executable)} -script_dir {quote(SCRIPTS)} -output_dir {quote(root / 'bottleneck run')}}}]}} {{ error "overwrite protection missing" }}
-set hold [find_timing_paths -from [get_pins r1/CK] -to [get_pins r2/D] -path_delay min -endpoint_count 1]
+set hold [find_timing_paths -to [get_pins r2/D] -path_delay min -endpoint_path_count 1]
 if {{[llength $hold] == 0}} {{ error "No hold test path" }}
 if {{![catch {{sta::write_design_variation_timing_cmd $hold {quote(root / 'hold.rpt')}}}]}} {{ error "hold path rejection missing" }}
 set sta_pocv_mode scalar
